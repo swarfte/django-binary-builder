@@ -6,7 +6,7 @@
 #define MyAppExeName "{{ executable_name }}.exe"
 
 [Setup]
-AppId={{ app_id }}
+AppId={% raw %}{{{% endraw %}{{ app_id[1:-1] }}{% raw %}}}{% endraw %}
 AppName={% raw %}{#MyAppName}{% endraw %}
 AppVersion={% raw %}{#MyAppVersion}{% endraw %}
 AppPublisher={% raw %}{#MyAppPublisher}{% endraw %}
