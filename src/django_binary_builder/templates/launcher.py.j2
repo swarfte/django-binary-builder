@@ -34,6 +34,30 @@ def ensure_project_importable() -> None:
         sys.path.insert(0, str(project_root))
 
 
+def ensure_stdio() -> None:
+    """Work around PyInstaller windowed builds leaving stdio as None.
+
+    With ``console=False`` on Windows, ``sys.stdout``/``sys.stderr`` are
+    ``None`` because no console is attached. Anything that writes to them
+    (e.g. Django management command output) then raises an uncaught
+    ``AttributeError`` with no console to show it, so the app appears to
+    do nothing. Redirect to a log file next to the executable instead.
+    """
+
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+
+    if getattr(sys, "frozen", False):
+        log_dir = Path(sys.executable).resolve().parent
+    else:
+        log_dir = Path(__file__).resolve().parent
+
+    stream = open(log_dir / "startup.log", "a", encoding="utf-8", buffering=1)
+
+    sys.stdout = sys.stdout or stream
+    sys.stderr = sys.stderr or stream
+
+
 def find_available_port(host: str, preferred_port: int) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         try:
@@ -52,6 +76,7 @@ def load_wsgi_application():
 
 
 def main() -> int:
+    ensure_stdio()
     ensure_project_importable()
 
     local_dir = Path(__file__).resolve().parent
