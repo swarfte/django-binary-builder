@@ -1,2 +1,1 @@
-def hello() -> str:
-    return "Hello from django-binary-builder!"
+__version__ = "0.1.0"
