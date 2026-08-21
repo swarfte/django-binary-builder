@@ -138,6 +138,7 @@ DJANGO_BINARY_BUILDER = {
     "VERSION": "0.1.1",
     "PUBLISHER": "Example Company",
     "EXECUTABLE_NAME": "example-project",
+    "ICON": BASE_DIR / "assets" / "icon.ico",
     # "OUTPUT_DIR": BASE_DIR / "release",
     # "WORK_DIR": BASE_DIR / ".django-binary-builder",
     # "SERVER": {
