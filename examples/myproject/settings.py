@@ -132,3 +132,55 @@ MAILERS = {
 STATIC_URL = "static/"
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+DJANGO_BINARY_BUILDER = {
+    "NAME": "Example Project",
+    "VERSION": "0.1.1",
+    "PUBLISHER": "Example Company",
+    "EXECUTABLE_NAME": "example-project",
+    # "OUTPUT_DIR": BASE_DIR / "release",
+    # "WORK_DIR": BASE_DIR / ".django-binary-builder",
+    # "SERVER": {
+    #     "HOST": "127.0.0.1",
+    #     "PORT": 8765,
+    #     "THREADS": 8,
+    #     "OPEN_BROWSER": True,
+    # },
+    # "ENVIRONMENT": {
+    #     "ENABLED": True,
+    #     "FILES": [BASE_DIR / ".env"],
+    #     "INCLUDE": [
+    #         "DJANGO_SECRET_KEY",
+    #         "DJANGO_ALLOWED_HOSTS",
+    #         "APP_FEATURE_*",
+    #     ],
+    #     "EXCLUDE": [
+    #         "DJANGO_BINARY_ADMIN_PASSWORD",
+    #         "DJANGO_BINARY_DB_PASSWORD",
+    #     ],
+    #     "REQUIRED": [],
+    #     # DJANGO_SECRET_KEY matches the secret-name policy; including
+    #     # it in the snapshot requires explicitly accepting the risk.
+    #     "ALLOW_SECRETS": True,
+    # },
+    # "DATABASE": {
+    #     "MODE": "sqlite",
+    #     "RUN_MIGRATIONS": True,
+    #     "SQLITE": {
+    #         "FILENAME": "db.sqlite3",
+    #     },
+    # },
+    # "INITIAL_ADMIN": {
+    #     "ENABLED": True,
+    #     "SQLITE_ONLY": True,
+    #     "REQUIRE_PASSWORD_CHANGE": True,
+    # },
+    # "RUNTIME": {
+    #     "COMPANY_DIRECTORY": "ExampleCompany",
+    #     "APPLICATION_DIRECTORY": "BasicProject",
+    # },
+    # "BUILD": {
+    #     "MODE": "onedir",
+    #     "CONSOLE": True,
+    # },
+}
