@@ -128,24 +128,58 @@ def main() -> int:
     host = str(server_config.get("host") or DEFAULT_HOST)
     preferred_port = int(server_config.get("port") or DEFAULT_PORT)
     threads = int(server_config.get("threads") or DEFAULT_THREADS)
+    mode = str(server_config.get("mode") or "webview")
 
     port = find_available_port(host, preferred_port)
     url = f"http://{host}:{port}/"
 
     logger.info("Serving the application at %s", url)
 
-    if server_config.get("open_browser", True):
-        browser_timer = threading.Timer(
-            1.5,
-            webbrowser.open,
-            args=(url,),
-        )
-        browser_timer.daemon = True
-        browser_timer.start()
+    from waitress.server import create_server
 
-    from waitress import serve
+    server = create_server(application, host=host, port=port, threads=threads)
 
-    serve(application, host=host, port=port, threads=threads)
+    server_thread = threading.Thread(target=server.run, daemon=True)
+    server_thread.start()
+
+    if mode == "webview":
+        try:
+            return _run_webview(url, defaults, logger, server)
+        except ImportError:
+            logger.warning(
+                "pywebview is not available; falling back to opening the "
+                "default browser instead of a native window."
+            )
+            mode = "browser"
+
+    if mode == "browser" and server_config.get("open_browser", True):
+        webbrowser.open(url)
+
+    server_thread.join()
+
+    return 0
+
+
+def _run_webview(url: str, defaults: dict, logger, server) -> int:
+    """Open a native desktop window and block until it is closed."""
+
+    import webview
+
+    webview_config = defaults.get("webview", {})
+
+    webview.create_window(
+        str(webview_config.get("title") or "Application"),
+        url,
+        width=int(webview_config.get("width") or 1200),
+        height=int(webview_config.get("height") or 800),
+        resizable=bool(webview_config.get("resizable", True)),
+    )
+
+    webview.start()
+
+    logger.info("The application window was closed; shutting down.")
+
+    server.close()
 
     return 0
 

@@ -168,3 +168,38 @@ def test_invalid_privileges_raises(settings):
 
     with pytest.raises(CommandError):
         get_builder_settings()
+
+
+def test_server_mode_defaults_to_webview(settings):
+    settings.DJANGO_BINARY_BUILDER = {}
+
+    config = get_builder_settings()
+
+    assert config["SERVER"]["MODE"] == "webview"
+
+
+def test_invalid_server_mode_raises(settings):
+    settings.DJANGO_BINARY_BUILDER = {"SERVER": {"MODE": "popup"}}
+
+    with pytest.raises(CommandError) as error:
+        get_builder_settings()
+
+    assert "SERVER.MODE" in str(error.value)
+
+
+def test_webview_title_defaults_to_name(settings):
+    settings.DJANGO_BINARY_BUILDER = {"NAME": "My Cool App"}
+
+    config = get_builder_settings()
+
+    assert config["WEBVIEW"]["TITLE"] == "My Cool App"
+    assert config["WEBVIEW"]["WIDTH"] == 1200
+    assert config["WEBVIEW"]["HEIGHT"] == 800
+    assert config["WEBVIEW"]["RESIZABLE"] is True
+
+
+def test_invalid_webview_width_raises(settings):
+    settings.DJANGO_BINARY_BUILDER = {"WEBVIEW": {"WIDTH": 0}}
+
+    with pytest.raises(CommandError):
+        get_builder_settings()

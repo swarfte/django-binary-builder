@@ -7,6 +7,13 @@ into an existing Django project, add it to `INSTALLED_APPS`, and use
 the `binary` management command to package the project into a
 standalone, installable desktop application for Windows.
 
+By default the packaged application opens as a native desktop window
+(via [`pywebview`](https://pywebview.flowrl.com/)) rather than a
+browser tab — Django and Waitress still run in the background on
+`127.0.0.1`, but the user only ever sees an app window. Closing that
+window shuts the server down and exits the process. Set
+`SERVER.MODE = "browser"` to open the default system browser instead.
+
 ```text
 Read Django settings and .env
 → Validate the build environment
@@ -99,7 +106,14 @@ DJANGO_BINARY_BUILDER = {
         "HOST": "127.0.0.1",  # runtime binds loopback only
         "PORT": 8765,
         "THREADS": 8,
-        "OPEN_BROWSER": True,
+        "MODE": "webview",  # "webview" (native window) or "browser"
+        "OPEN_BROWSER": True,  # only used when MODE = "browser"
+    },
+    "WEBVIEW": {
+        "TITLE": None,  # defaults to NAME
+        "WIDTH": 1200,
+        "HEIGHT": 800,
+        "RESIZABLE": True,
     },
     "ENVIRONMENT": {
         "ENABLED": True,

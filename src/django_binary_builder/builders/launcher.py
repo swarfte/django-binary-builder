@@ -62,7 +62,14 @@ def build_runtime_defaults(context: BuildContext) -> dict[str, Any]:
             "host": config["SERVER"]["HOST"],
             "port": config["SERVER"]["PORT"],
             "threads": config["SERVER"]["THREADS"],
+            "mode": config["SERVER"]["MODE"],
             "open_browser": config["SERVER"]["OPEN_BROWSER"],
+        },
+        "webview": {
+            "title": config["WEBVIEW"]["TITLE"],
+            "width": config["WEBVIEW"]["WIDTH"],
+            "height": config["WEBVIEW"]["HEIGHT"],
+            "resizable": config["WEBVIEW"]["RESIZABLE"],
         },
         "database": {
             "mode": config["DATABASE"]["MODE"],

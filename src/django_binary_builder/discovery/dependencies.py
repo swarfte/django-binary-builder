@@ -10,13 +10,14 @@ REQUIRED_BUILD_MODULES = (
     "jinja2",
     "waitress",
     "dotenv",
+    "webview",
 )
 
 
 def is_module_available(module_name: str) -> bool:
     try:
         return importlib.util.find_spec(module_name) is not None
-    except ImportError, ValueError:
+    except (ImportError, ValueError):
         return False
 
 

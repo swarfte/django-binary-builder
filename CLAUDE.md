@@ -96,9 +96,17 @@ concern should not require touching unrelated ones:
 - Runtime startup order matters and is fixed: load snapshot → set `DJANGO_BINARY_RUNTIME=1` → set
   `DJANGO_SETTINGS_MODULE` → create runtime dirs → `django.setup()` → acquire init lock → test DB connection →
   migrate → create initial admin → write state → release lock → import WSGI app → pick a port → start Waitress
-  → open browser. Any failure in this sequence must prevent Waitress from starting.
+  (background thread) → show the UI. Any failure in this sequence must prevent Waitress from starting.
 - PyInstaller is always `onedir` (no `onefile`); Waitress is the runtime WSGI server (no `runserver`, no
   autoreload, binds `127.0.0.1` only).
+- **UI mode (`SERVER.MODE`)**: defaults to `"webview"` — the launcher opens a native desktop window via
+  `pywebview` (`builders/launcher.py`'s `webview` runtime-defaults block, rendered into
+  `templates/launcher.py.j2`'s `_run_webview()`); closing that window calls `server.close()` and exits the
+  whole process. `SERVER.MODE = "browser"` opens the system default browser instead and leaves the process
+  running until externally killed (the old behavior). If `pywebview` fails to import at runtime, the launcher
+  falls back to browser mode with a logged warning rather than crashing. `templates/application.spec.j2` must
+  keep collecting `webview`'s data/binaries/hidden imports (`collect_all("webview")`) alongside Django and
+  Waitress for this to survive freezing.
 
 ## Example project
 

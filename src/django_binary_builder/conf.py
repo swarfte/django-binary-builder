@@ -29,7 +29,14 @@ DEFAULTS: dict[str, Any] = {
         "HOST": "127.0.0.1",
         "PORT": 8765,
         "THREADS": 8,
+        "MODE": "webview",
         "OPEN_BROWSER": True,
+    },
+    "WEBVIEW": {
+        "TITLE": None,
+        "WIDTH": 1200,
+        "HEIGHT": 800,
+        "RESIZABLE": True,
     },
     "ENVIRONMENT": {
         "ENABLED": True,
@@ -100,6 +107,7 @@ DEFAULTS: dict[str, Any] = {
 
 _VALID_PRIVILEGES = {"lowest", "admin"}
 _VALID_DATABASE_MODES = {"sqlite", "external"}
+_VALID_SERVER_MODES = {"webview", "browser"}
 _EXECUTABLE_NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 _RESERVED_WINDOWS_NAMES = {
     "CON",
@@ -233,6 +241,9 @@ def _normalize(config: dict[str, Any]) -> None:
     if not runtime_config["APPLICATION_DIRECTORY"]:
         runtime_config["APPLICATION_DIRECTORY"] = make_safe_filename(config["NAME"])
 
+    if not config["WEBVIEW"]["TITLE"]:
+        config["WEBVIEW"]["TITLE"] = config["NAME"]
+
     settings_module = getattr(settings, "SETTINGS_MODULE", None) or os.environ.get(
         "DJANGO_SETTINGS_MODULE"
     )
@@ -277,7 +288,27 @@ def _validate(config: dict[str, Any]) -> None:
     if server["THREADS"] < 1:
         raise CommandError("SERVER.THREADS must be at least 1.")
 
+    if server["MODE"] not in _VALID_SERVER_MODES:
+        raise CommandError(
+            "SERVER.MODE must be one of: "
+            + ", ".join(sorted(_VALID_SERVER_MODES))
+            + f" (got {server['MODE']!r})."
+        )
+
     _expect_type(server, "SERVER.OPEN_BROWSER", bool)
+
+    webview = _expect_section(config, "WEBVIEW")
+    _expect_type(webview, "WEBVIEW.TITLE", str, non_empty=True)
+    _expect_type(webview, "WEBVIEW.WIDTH", int)
+    _expect_type(webview, "WEBVIEW.HEIGHT", int)
+
+    if webview["WIDTH"] < 1:
+        raise CommandError("WEBVIEW.WIDTH must be at least 1.")
+
+    if webview["HEIGHT"] < 1:
+        raise CommandError("WEBVIEW.HEIGHT must be at least 1.")
+
+    _expect_type(webview, "WEBVIEW.RESIZABLE", bool)
 
     environment = _expect_section(config, "ENVIRONMENT")
     _expect_type(environment, "ENVIRONMENT.ENABLED", bool)

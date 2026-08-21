@@ -20,6 +20,8 @@ waitress_datas, waitress_binaries, waitress_hidden_imports = collect_all(
     "waitress"
 )
 
+webview_datas, webview_binaries, webview_hidden_imports = collect_all("webview")
+
 library_hidden_imports = [
     module_name
     for module_name in collect_submodules("django_binary_builder")
@@ -51,8 +53,8 @@ excluded_modules = [
 {% endfor %}
 ]
 
-datas = django_datas + waitress_datas
-binaries = django_binaries + waitress_binaries
+datas = django_datas + waitress_datas + webview_datas
+binaries = django_binaries + waitress_binaries + webview_binaries
 
 {% for source, destination in extra_datas %}
 datas.append((r"{{ source }}", r"{{ destination }}"))
@@ -66,6 +68,7 @@ analysis = Analysis(
     hiddenimports=(
         django_hidden_imports
         + waitress_hidden_imports
+        + webview_hidden_imports
         + library_hidden_imports
         + project_hidden_imports
         + additional_hidden_imports

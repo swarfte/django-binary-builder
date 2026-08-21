@@ -416,7 +416,14 @@ DJANGO_BINARY_BUILDER = {
         "HOST": "127.0.0.1",
         "PORT": 8765,
         "THREADS": 8,
+        "MODE": "webview",
         "OPEN_BROWSER": True,
+    },
+    "WEBVIEW": {
+        "TITLE": None,
+        "WIDTH": 1200,
+        "HEIGHT": 800,
+        "RESIZABLE": True,
     },
     "ENVIRONMENT": {
         "ENABLED": True,
@@ -964,11 +971,20 @@ Launcher 必須：
 - 不使用 `runserver`。
 - 不使用 autoreload。
 - 支援直接以普通 Python 執行。
-- 使用 Waitress。
+- 使用 Waitress，並以背景 thread 執行（`waitress.server.create_server(...).run()`），
+  以便主 thread 可以控制 webview 的事件迴圈及後續關閉。
 - 綁定 `127.0.0.1`。
 - port 衝突時選擇可用 port。
-- browser 使用實際 port。
-- 初始化失敗時停止。
+- 依 `SERVER.MODE` 決定顯示方式：
+  - `"webview"`（預設）：在主 thread 呼叫 `webview.create_window(...)` 及
+    `webview.start()`，以原生桌面視窗顯示應用程式，不顯示瀏覽器網址列。
+    `webview.start()` 為 blocking call；回傳（使用者關閉視窗）後，呼叫
+    `server.close()` 並結束整個 process。
+  - `"browser"`：使用實際 port 呼叫 `webbrowser.open()` 開啟系統預設瀏覽器，
+    process 維持執行直到被外部終止。
+  - 若 `pywebview` 無法 import，退回 `"browser"` 行為並記錄 warning，不得
+    crash。
+- 初始化失敗時停止，不啟動 Waitress，不建立 webview 視窗或開啟 browser。
 
 ## 21. PyInstaller
 
@@ -1110,7 +1126,7 @@ context.executable_path.is_file()
 必須檢查：
 
 - host 與 target 一致
-- PyInstaller、Jinja2、Waitress、python-dotenv 可 import
+- PyInstaller、Jinja2、Waitress、python-dotenv、pywebview 可 import
 - project root 存在
 - settings module 及 WSGI application 有效
 - build mode 是 `onedir`
