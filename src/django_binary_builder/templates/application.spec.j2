@@ -1,0 +1,90 @@
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_submodules,
+)
+
+
+django_datas, django_binaries, django_hidden_imports = (
+    collect_all("django")
+)
+
+waitress_datas, waitress_binaries, waitress_hidden_imports = (
+    collect_all("waitress")
+)
+
+project_hidden_imports = []
+
+{% for app_name in installed_apps %}
+project_hidden_imports += collect_submodules(
+    "{{ app_name }}"
+)
+{% endfor %}
+
+additional_hidden_imports = [
+{% for hidden_import in hidden_imports %}
+    "{{ hidden_import }}",
+{% endfor %}
+]
+
+excluded_modules = [
+{% for excluded_module in excluded_modules %}
+    "{{ excluded_module }}",
+{% endfor %}
+]
+
+datas = django_datas + waitress_datas
+
+{% for source, destination in extra_data %}
+datas.append(
+    (
+        r"{{ source }}",
+        r"{{ destination }}",
+    )
+)
+{% endfor %}
+
+analysis = Analysis(
+    [r"{{ launcher_path }}"],
+    pathex=[
+        r"{{ project_root }}",
+    ],
+    binaries=django_binaries + waitress_binaries,
+    datas=datas,
+    hiddenimports=(
+        django_hidden_imports
+        + waitress_hidden_imports
+        + project_hidden_imports
+        + additional_hidden_imports
+    ),
+    excludes=excluded_modules,
+    noarchive=False,
+)
+
+python_archive = PYZ(
+    analysis.pure,
+)
+
+executable = EXE(
+    python_archive,
+    analysis.scripts,
+    [],
+    exclude_binaries=True,
+    name="{{ executable_name }}",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console={{ console }},
+{% if icon %}
+    icon=r"{{ icon }}",
+{% endif %}
+)
+
+bundle = COLLECT(
+    executable,
+    analysis.binaries,
+    analysis.datas,
+    strip=False,
+    upx=True,
+    name="{{ executable_name }}",
+)

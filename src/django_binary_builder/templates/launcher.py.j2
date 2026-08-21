@@ -1,0 +1,84 @@
+import os
+import socket
+import threading
+import webbrowser
+
+from waitress import serve
+
+
+os.environ.setdefault(
+    "DJANGO_SETTINGS_MODULE",
+    "{{ settings_module }}",
+)
+
+os.environ["DJANGO_BINARY_RUNTIME"] = "1"
+
+from {{ wsgi_module }} import {{ wsgi_object }}
+
+
+def find_available_port(
+    host: str,
+    preferred_port: int,
+) -> int:
+    test_socket = socket.socket(
+        socket.AF_INET,
+        socket.SOCK_STREAM,
+    )
+
+    try:
+        test_socket.bind(
+            (
+                host,
+                preferred_port,
+            )
+        )
+        return preferred_port
+    except OSError:
+        test_socket.bind(
+            (
+                host,
+                0,
+            )
+        )
+        return test_socket.getsockname()[1]
+    finally:
+        test_socket.close()
+
+
+def open_browser(
+    url: str,
+) -> None:
+    webbrowser.open(url)
+
+
+def main() -> None:
+    host = "{{ host }}"
+
+    port = find_available_port(
+        host,
+        {{ port }},
+    )
+
+    url = f"http://{host}:{port}/"
+
+{% if open_browser %}
+    browser_timer = threading.Timer(
+        1.0,
+        open_browser,
+        args=(url,),
+    )
+
+    browser_timer.daemon = True
+    browser_timer.start()
+{% endif %}
+
+    serve(
+        {{ wsgi_object }},
+        host=host,
+        port=port,
+        threads={{ threads }},
+    )
+
+
+if __name__ == "__main__":
+    main()

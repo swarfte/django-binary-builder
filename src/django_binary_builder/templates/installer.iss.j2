@@ -1,0 +1,39 @@
+#define MyAppName "{{ app_name }}"
+#define MyAppVersion "{{ app_version }}"
+#define MyAppPublisher "{{ publisher }}"
+#define MyAppExeName "{{ executable_name }}.exe"
+
+[Setup]
+AppId={{ app_id }}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+DefaultDirName={localappdata}\Programs\{#MyAppName}
+DefaultGroupName={#MyAppName}
+OutputDir={{ release_dir }}
+OutputBaseFilename={{ installer_filename }}
+Compression=lzma2
+SolidCompression=yes
+PrivilegesRequired={{ privileges }}
+WizardStyle=modern
+ArchitecturesAllowed={{ architecture }}
+UninstallDisplayName={#MyAppName}
+
+{% if icon %}
+SetupIconFile={{ icon }}
+{% endif %}
+
+[Files]
+Source: "{{ bundle_dir }}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+{% if create_start_menu_shortcut %}
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+{% endif %}
+
+{% if create_desktop_shortcut %}
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+{% endif %}
+
+[Run]
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
