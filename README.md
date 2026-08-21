@@ -34,7 +34,7 @@ Read Django settings and .env
   Windows host; `linux` and `macos` targets are reserved for future
   versions)
 - PyInstaller 6.x (`onedir` mode only)
-- Inno Setup 6 (only needed when building an installer)
+- Inno Setup 7 (only needed when building an installer)
 
 ## Installation
 
@@ -183,7 +183,7 @@ DJANGO_BINARY_BUILDER = {
 ## Windows build prerequisites
 
 1. Build on a Windows 10 or Windows 11 host (no cross-compilation).
-2. Install [Inno Setup 6](https://jrsoftware.org/isinfo.php) — the
+2. Install [Inno Setup 7](https://jrsoftware.org/isinfo.php) — the
    default install locations and `PATH` are searched automatically, or
    set `WINDOWS.INNO_SETUP_COMPILER` to the full `ISCC.exe` path. Use
    `--skip-installer` while iterating to skip this requirement.
@@ -308,7 +308,7 @@ password change unless you add your own middleware or login flow.
   does not register `--version`; use `--app-version`.
 - **`STATIC_ROOT must be configured`** — set `STATIC_ROOT` or pass
   `--no-collectstatic`.
-- **`Inno Setup 6 was not found`** — install Inno Setup 6, add
+- **`Inno Setup 7 was not found`** — install Inno Setup 7, add
   `ISCC.exe` to `PATH`, set `WINDOWS.INNO_SETUP_COMPILER`, or build
   with `--skip-installer`.
 - **`Sensitive environment variables were selected ...`** — remove the

@@ -332,7 +332,7 @@ def run_windows_preflight(
 
         if inno_compiler is None:
             raise CommandError(
-                "Inno Setup 6 was not found. Install Inno Setup 6 or "
+                "Inno Setup 7 was not found. Install Inno Setup 7 or "
                 "configure DJANGO_BINARY_BUILDER['WINDOWS']"
                 "['INNO_SETUP_COMPILER']."
             )

@@ -260,6 +260,6 @@ def test_default_inno_paths_match_spec():
     from pathlib import Path
 
     assert DEFAULT_INNO_PATHS[0] == Path(
-        r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+        r"C:\Program Files (x86)\Inno Setup 7\ISCC.exe"
     )
-    assert DEFAULT_INNO_PATHS[1] == Path(r"C:\Program Files\Inno Setup 6\ISCC.exe")
+    assert DEFAULT_INNO_PATHS[1] == Path(r"C:\Program Files\Inno Setup 7\ISCC.exe")

@@ -75,7 +75,7 @@ release/windows/<executable-name>-<version>-Setup.exe
 - Windows 10、Windows 11
 - PyInstaller 6.x
 - PyInstaller `onedir`
-- Inno Setup 6
+- Inno Setup 7
 - Waitress WSGI server
 - WSGI Django projects
 - Django static files
@@ -1083,8 +1083,8 @@ context.executable_path.is_file()
 
 1. `WINDOWS.INNO_SETUP_COMPILER`
 2. `shutil.which("ISCC.exe")`
-3. `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`
-4. `C:\Program Files\Inno Setup 6\ISCC.exe`
+3. `C:\Program Files (x86)\Inno Setup 7\ISCC.exe`
+4. `C:\Program Files\Inno Setup 7\ISCC.exe`
 
 ### 23.2 Installer
 

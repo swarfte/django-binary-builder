@@ -11,8 +11,8 @@ from django_binary_builder.builders import render_template
 from django_binary_builder.context import BuildContext
 
 DEFAULT_INNO_PATHS = (
-    Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe"),
-    Path(r"C:\Program Files\Inno Setup 6\ISCC.exe"),
+    Path(r"C:\Program Files (x86)\Inno Setup 7\ISCC.exe"),
+    Path(r"C:\Program Files\Inno Setup 7\ISCC.exe"),
 )
 
 APP_ID_NAMESPACE = uuid.UUID("f487346d-7877-4d7a-86a4-b143ddf81462")
@@ -81,7 +81,7 @@ def run_inno_setup(context: BuildContext) -> Path:
 
     if compiler_path is None:
         raise CommandError(
-            "Inno Setup compiler was not found. Install Inno Setup 6 "
+            "Inno Setup compiler was not found. Install Inno Setup 7 "
             "or configure WINDOWS.INNO_SETUP_COMPILER."
         )
 
