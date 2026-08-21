@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# django-binary-builder artifacts
+.django-binary-builder/
+release/
+staticfiles/
+staticroot/

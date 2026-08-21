@@ -1,0 +1,12 @@
+from enum import StrEnum
+
+
+class TargetPlatform(StrEnum):
+    WINDOWS = "windows"
+    LINUX = "linux"
+    MACOS = "macos"
+
+
+class DatabaseMode(StrEnum):
+    SQLITE = "sqlite"
+    EXTERNAL = "external"
