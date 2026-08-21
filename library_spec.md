@@ -412,14 +412,12 @@ DJANGO_BINARY_BUILDER = {
     "ICON": BASE_DIR / "assets" / "application.ico",
     "OUTPUT_DIR": BASE_DIR / "release",
     "WORK_DIR": BASE_DIR / ".django-binary-builder",
-
     "SERVER": {
         "HOST": "127.0.0.1",
         "PORT": 8765,
         "THREADS": 8,
         "OPEN_BROWSER": True,
     },
-
     "ENVIRONMENT": {
         "ENABLED": True,
         "FILES": [BASE_DIR / ".env"],
@@ -439,7 +437,6 @@ DJANGO_BINARY_BUILDER = {
         "ALLOW_SECRETS": True,
         "WARN_ON_SECRET_NAMES": True,
     },
-
     "DATABASE": {
         "MODE": "sqlite",
         "RUN_MIGRATIONS": True,
@@ -456,7 +453,6 @@ DJANGO_BINARY_BUILDER = {
             "TEST_CONNECTION_ON_STARTUP": True,
         },
     },
-
     "INITIAL_ADMIN": {
         "ENABLED": True,
         "SQLITE_ONLY": True,
@@ -467,7 +463,6 @@ DJANGO_BINARY_BUILDER = {
         "REQUIRE_PASSWORD_CHANGE": True,
         "RESET_PASSWORD_IF_USER_EXISTS": False,
     },
-
     "RUNTIME": {
         "COMPANY_DIRECTORY": "ExampleCompany",
         "APPLICATION_DIRECTORY": "MyApplication",
@@ -476,7 +471,6 @@ DJANGO_BINARY_BUILDER = {
         "MEDIA_DIRECTORY": "media",
         "CONFIG_DIRECTORY": "config",
     },
-
     "BUILD": {
         "MODE": "onedir",
         "CONSOLE": True,
@@ -486,7 +480,6 @@ DJANGO_BINARY_BUILDER = {
         "EXCLUDED_MODULES": [],
         "EXTRA_DATA": [],
     },
-
     "WINDOWS": {
         "INNO_SETUP_COMPILER": None,
         "PRIVILEGES": "lowest",
