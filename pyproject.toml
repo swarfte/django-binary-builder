@@ -1,12 +1,12 @@
 [project]
 name = "django-binary-builder"
-version = "0.3.0"
+version = "0.3.1"
 description = "Build Django projects as installable desktop applications with a portable Python runtime"
 readme = "README.md"
 authors = [
     { name = "Benjamin Chau", email = "68836494+swarfte@users.noreply.github.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 license = "MIT"
 keywords = [
     "django",
@@ -18,20 +18,18 @@ keywords = [
     "packaging",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
     "Framework :: Django",
+    "Framework :: Django :: 5.0",
     "Framework :: Django :: 6.0",
-    "Framework :: Django :: 6.1",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Software Development :: Build Tools",
 ]
 dependencies = [
-    "Django>=6.0,<7.0",
+    "Django>=5.0",
     "jinja2>=3.1.6,<4.0",
     "pyinstaller>=6.22.2,<7.0",
     "python-dotenv>=1.1,<2.0",
@@ -43,7 +41,7 @@ Repository = "https://github.com/swarfte/django-binary-builder"
 Issues = "https://github.com/swarfte/django-binary-builder/issues"
 
 [build-system]
-requires = ["uv_build>=0.12.0,<0.13.0"]
+requires = ["uv_build>=0.12.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
