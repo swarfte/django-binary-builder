@@ -16,9 +16,9 @@ OutputDir="{{ release_dir }}"
 OutputBaseFilename={{ installer_filename }}
 Compression=lzma2
 SolidCompression=yes
-PrivilegesRequired={{ privileges }}
+PrivilegesRequired=lowest
 WizardStyle=modern
-ArchitecturesAllowed={{ architecture }}
+ArchitecturesAllowed=x64compatible
 UninstallDisplayName={% raw %}{#MyAppName}{% endraw %}
 {% if icon %}
 SetupIconFile="{{ icon }}"
@@ -28,12 +28,8 @@ SetupIconFile="{{ icon }}"
 Source: "{{ bundle_dir }}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-{% if create_start_menu_shortcut %}
 Name: "{group}\{% raw %}{#MyAppName}{% endraw %}"; Filename: "{app}\{% raw %}{#MyAppExeName}{% endraw %}"
-{% endif %}
-{% if create_desktop_shortcut %}
 Name: "{autodesktop}\{% raw %}{#MyAppName}{% endraw %}"; Filename: "{app}\{% raw %}{#MyAppExeName}{% endraw %}"
-{% endif %}
 
 [Run]
 Filename: "{app}\{% raw %}{#MyAppExeName}{% endraw %}"; Description: "Launch {% raw %}{#MyAppName}{% endraw %}"; Flags: nowait postinstall skipifsilent

@@ -1,57 +1,55 @@
-"""Central, non-secret build metadata and paths."""
+"""Central build metadata and bundle paths."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-RUNTIME_DEFAULTS_FILENAME = "runtime-defaults.json"
 INSTALLER_SUFFIX = "-Setup.exe"
+
+WORK_DIR_NAME = ".django-binary-builder"
+OUTPUT_DIR_NAME = "release"
 
 
 @dataclass(slots=True)
 class BuildContext:
+    """Everything the builders need, resolved once per build."""
+
     target_platform: str
     app_name: str
     app_version: str
-    publisher: str | None
+    publisher: str
     executable_name: str
-    database_mode: str
-    runtime_company_directory: str
-    runtime_application_directory: str
+    icon: Path | None
     project_root: Path
     work_dir: Path
     generated_dir: Path
-    pyinstaller_build_dir: Path
-    pyinstaller_dist_dir: Path
     release_dir: Path
     settings_module: str
-    wsgi_application: str
-    config: dict[str, Any]
+    wsgi_application: str | None
+    python_version: str = ""
+    requirements: list[str] = field(default_factory=list)
+    requirements_path: Path | None = None
+    config: dict[str, Any] = field(default_factory=dict)
 
     @property
-    def launcher_path(self) -> Path:
-        return self.generated_dir / "launcher.py"
+    def bundle_dir(self) -> Path:
+        return self.work_dir / "bundle"
 
     @property
-    def spec_path(self) -> Path:
-        return self.generated_dir / "application.spec"
+    def app_dir(self) -> Path:
+        return self.bundle_dir / "app"
+
+    @property
+    def runtime_dir(self) -> Path:
+        return self.bundle_dir / "runtime"
+
+    @property
+    def static_dir(self) -> Path:
+        return self.app_dir / "staticfiles"
 
     @property
     def inno_script_path(self) -> Path:
         return self.generated_dir / "installer.iss"
-
-    @property
-    def runtime_environment_path(self) -> Path:
-        filename = self.config["ENVIRONMENT"]["SNAPSHOT_FILENAME"]
-        return self.generated_dir / filename
-
-    @property
-    def runtime_defaults_path(self) -> Path:
-        return self.generated_dir / RUNTIME_DEFAULTS_FILENAME
-
-    @property
-    def bundle_dir(self) -> Path:
-        return self.pyinstaller_dist_dir / self.executable_name
 
     @property
     def executable_path(self) -> Path:
@@ -65,23 +63,18 @@ class BuildContext:
     def installer_path(self) -> Path:
         return self.release_dir / self.installer_filename
 
-    @property
-    def uses_sqlite(self) -> bool:
-        return self.database_mode == "sqlite"
-
-    @property
-    def uses_external_database(self) -> bool:
-        return self.database_mode == "external"
-
 
 def create_build_context(
     *,
     target_platform: str,
     config: dict[str, Any],
 ) -> BuildContext:
-    platform_work_dir = config["WORK_DIR"] / target_platform
-    release_dir = config["OUTPUT_DIR"] / target_platform
-    runtime_config = config["RUNTIME"]
+    work_dir = config["PROJECT_ROOT"] / WORK_DIR_NAME / target_platform
+
+    release_dir = config["PROJECT_ROOT"] / OUTPUT_DIR_NAME / target_platform
+
+    if config.get("OUTPUT_DIR"):
+        release_dir = Path(config["OUTPUT_DIR"]) / target_platform
 
     return BuildContext(
         target_platform=target_platform,
@@ -89,16 +82,12 @@ def create_build_context(
         app_version=config["VERSION"],
         publisher=config["PUBLISHER"],
         executable_name=config["EXECUTABLE_NAME"],
-        database_mode=config["DATABASE"]["MODE"],
-        runtime_company_directory=runtime_config["COMPANY_DIRECTORY"],
-        runtime_application_directory=runtime_config["APPLICATION_DIRECTORY"],
+        icon=config.get("ICON"),
         project_root=config["PROJECT_ROOT"],
-        work_dir=platform_work_dir,
-        generated_dir=platform_work_dir / "generated",
-        pyinstaller_build_dir=platform_work_dir / "build",
-        pyinstaller_dist_dir=platform_work_dir / "dist",
+        work_dir=work_dir,
+        generated_dir=work_dir / "generated",
         release_dir=release_dir,
         settings_module=config["SETTINGS_MODULE"],
-        wsgi_application=config["WSGI_APPLICATION"],
+        wsgi_application=config.get("WSGI_APPLICATION"),
         config=config,
     )

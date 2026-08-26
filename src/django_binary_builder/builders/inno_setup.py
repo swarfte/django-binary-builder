@@ -1,5 +1,6 @@
 """Inno Setup script generation and compilation."""
 
+import os
 import shutil
 import subprocess
 import uuid
@@ -15,13 +16,15 @@ DEFAULT_INNO_PATHS = (
     Path(r"C:\Program Files\Inno Setup 7\ISCC.exe"),
 )
 
+COMPILER_ENVIRONMENT_VARIABLE = "DJANGO_BINARY_INNO_COMPILER"
+
 APP_ID_NAMESPACE = uuid.UUID("f487346d-7877-4d7a-86a4-b143ddf81462")
 
 
-def find_inno_setup(context: BuildContext) -> Path | None:
+def find_inno_setup() -> Path | None:
     """Find the Inno Setup command-line compiler."""
 
-    configured = context.config["WINDOWS"].get("INNO_SETUP_COMPILER")
+    configured = os.environ.get(COMPILER_ENVIRONMENT_VARIABLE)
 
     if configured:
         candidate = Path(configured).expanduser()
@@ -46,7 +49,6 @@ def find_inno_setup(context: BuildContext) -> Path | None:
 def generate_inno_script(context: BuildContext) -> Path:
     """Generate ``installer.iss`` from the bundled template."""
 
-    windows_config = context.config["WINDOWS"]
     publisher = context.publisher or "Unknown Publisher"
 
     return render_template(
@@ -65,11 +67,7 @@ def generate_inno_script(context: BuildContext) -> Path:
             "bundle_dir": str(context.bundle_dir),
             "release_dir": str(context.release_dir),
             "installer_filename": context.installer_filename.removesuffix(".exe"),
-            "privileges": windows_config["PRIVILEGES"],
-            "architecture": windows_config["ARCHITECTURE"],
-            "create_desktop_shortcut": windows_config["CREATE_DESKTOP_SHORTCUT"],
-            "create_start_menu_shortcut": windows_config["CREATE_START_MENU_SHORTCUT"],
-            "icon": (str(context.config["ICON"]) if context.config["ICON"] else None),
+            "icon": (str(context.icon) if context.icon else None),
         },
     )
 
@@ -77,12 +75,12 @@ def generate_inno_script(context: BuildContext) -> Path:
 def run_inno_setup(context: BuildContext) -> Path:
     """Compile the installer script and verify the Setup.exe output."""
 
-    compiler_path = find_inno_setup(context)
+    compiler_path = find_inno_setup()
 
     if compiler_path is None:
         raise CommandError(
-            "Inno Setup compiler was not found. Install Inno Setup 7 "
-            "or configure WINDOWS.INNO_SETUP_COMPILER."
+            "Inno Setup compiler was not found. Install Inno Setup 7 or "
+            f"set the {COMPILER_ENVIRONMENT_VARIABLE} environment variable."
         )
 
     if not context.inno_script_path.is_file():

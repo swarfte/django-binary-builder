@@ -1,9 +1,8 @@
 """Settings handling for django-binary-builder.
 
-This module defines library defaults, deep-merges the project's
-``DJANGO_BINARY_BUILDER`` setting, normalizes paths, and validates
-setting types. It never executes a build and never moves secret
-values into dedicated fields.
+The library supports a single, minimal ``DJANGO_BINARY_BUILDER``
+setting; everything else about the build is derived automatically
+from the project and the current Python environment.
 """
 
 import os
@@ -15,7 +14,15 @@ from typing import Any
 from django.conf import settings
 from django.core.management.base import CommandError
 
-from django_binary_builder.runtime.database import validate_sqlite_filename
+SUPPORTED_KEYS = frozenset(
+    {
+        "NAME",
+        "VERSION",
+        "PUBLISHER",
+        "EXECUTABLE_NAME",
+        "ICON",
+    }
+)
 
 DEFAULTS: dict[str, Any] = {
     "NAME": None,
@@ -23,92 +30,10 @@ DEFAULTS: dict[str, Any] = {
     "PUBLISHER": None,
     "EXECUTABLE_NAME": None,
     "ICON": None,
-    "OUTPUT_DIR": "release",
-    "WORK_DIR": ".django-binary-builder",
-    "SERVER": {
-        "HOST": "127.0.0.1",
-        "PORT": 8765,
-        "THREADS": 8,
-        "MODE": "webview",
-        "OPEN_BROWSER": True,
-    },
-    "WEBVIEW": {
-        "TITLE": None,
-        "WIDTH": 1200,
-        "HEIGHT": 800,
-        "RESIZABLE": True,
-    },
-    "ENVIRONMENT": {
-        "ENABLED": True,
-        "FILES": [],
-        "OVERRIDE_PROCESS_ENV": False,
-        "INCLUDE": [],
-        "EXCLUDE": [
-            "DJANGO_BINARY_ADMIN_PASSWORD",
-            "DJANGO_BINARY_DB_PASSWORD",
-        ],
-        "REQUIRED": [],
-        "PACKAGE_MODE": "snapshot",
-        "SNAPSHOT_FILENAME": "runtime-environment.json",
-        "ALLOW_SECRETS": False,
-        "WARN_ON_SECRET_NAMES": True,
-    },
-    "DATABASE": {
-        "MODE": "sqlite",
-        "RUN_MIGRATIONS": True,
-        "MIGRATION_TIMEOUT": 300,
-        "SQLITE": {
-            "FILENAME": "db.sqlite3",
-            "COPY_INITIAL_DATABASE": False,
-            "INITIAL_DATABASE": None,
-        },
-        "EXTERNAL": {
-            "USE_PROJECT_SETTINGS": True,
-            "CONFIG_FILE": "database.json",
-            "ALLOW_ENVIRONMENT_VARIABLES": True,
-            "TEST_CONNECTION_ON_STARTUP": True,
-        },
-    },
-    "INITIAL_ADMIN": {
-        "ENABLED": True,
-        "SQLITE_ONLY": True,
-        "USERNAME": "admin",
-        "PASSWORD": "admin1234",
-        "EMAIL": "admin@localhost",
-        "EXTRA_FIELDS": {},
-        "REQUIRE_PASSWORD_CHANGE": True,
-        "RESET_PASSWORD_IF_USER_EXISTS": False,
-    },
-    "RUNTIME": {
-        "COMPANY_DIRECTORY": None,
-        "APPLICATION_DIRECTORY": None,
-        "DATA_DIRECTORY": None,
-        "LOG_DIRECTORY": "logs",
-        "MEDIA_DIRECTORY": "media",
-        "CONFIG_DIRECTORY": "config",
-    },
-    "BUILD": {
-        "MODE": "onedir",
-        "CONSOLE": False,
-        "CLEAN": True,
-        "COLLECT_STATIC": True,
-        "HIDDEN_IMPORTS": [],
-        "EXCLUDED_MODULES": [],
-        "EXTRA_DATA": [],
-    },
-    "WINDOWS": {
-        "INNO_SETUP_COMPILER": None,
-        "PRIVILEGES": "lowest",
-        "ARCHITECTURE": "x64compatible",
-        "CREATE_DESKTOP_SHORTCUT": True,
-        "CREATE_START_MENU_SHORTCUT": True,
-    },
 }
 
-_VALID_PRIVILEGES = {"lowest", "admin"}
-_VALID_DATABASE_MODES = {"sqlite", "external"}
-_VALID_SERVER_MODES = {"webview", "browser"}
 _EXECUTABLE_NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+
 _RESERVED_WINDOWS_NAMES = {
     "CON",
     "PRN",
@@ -119,42 +44,40 @@ _RESERVED_WINDOWS_NAMES = {
 }
 
 
-def deep_merge(
-    base: dict[str, Any],
-    override: dict[str, Any],
-) -> dict[str, Any]:
-    """Return a deep merge of ``override`` on top of ``base``."""
-
-    result = deepcopy(base)
-
-    for key, value in override.items():
-        existing_value = result.get(key)
-
-        if isinstance(existing_value, dict) and isinstance(value, dict):
-            result[key] = deep_merge(existing_value, value)
-        else:
-            result[key] = deepcopy(value)
-
-    return result
-
-
 def get_builder_settings(
     overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return the merged, normalized and validated builder settings."""
+    """Return the normalized builder settings for this build.
+
+    Unknown keys are ignored and reported through the ``WARNINGS``
+    entry so the management command can surface them.
+    """
 
     user_settings = getattr(settings, "DJANGO_BINARY_BUILDER", None) or {}
 
     if not isinstance(user_settings, dict):
         raise CommandError("The DJANGO_BINARY_BUILDER setting must be a dictionary.")
 
-    config = deep_merge(DEFAULTS, user_settings)
+    warnings = [
+        f"Ignored unknown DJANGO_BINARY_BUILDER key: {key!r} "
+        f"(supported keys: {', '.join(sorted(SUPPORTED_KEYS))})"
+        for key in sorted(user_settings.keys() - SUPPORTED_KEYS)
+    ]
+
+    config = deepcopy(DEFAULTS)
+
+    for key in SUPPORTED_KEYS:
+        if user_settings.get(key) is not None:
+            config[key] = user_settings[key]
 
     if overrides:
-        config = deep_merge(config, overrides)
+        for key, value in overrides.items():
+            if key in SUPPORTED_KEYS:
+                config[key] = value
 
     _normalize(config)
-    _validate(config)
+
+    config["WARNINGS"] = warnings
 
     return config
 
@@ -205,44 +128,30 @@ def _normalize(config: dict[str, Any]) -> None:
     project_root = Path(settings.BASE_DIR).resolve()
     config["PROJECT_ROOT"] = project_root
 
-    for key in ("OUTPUT_DIR", "WORK_DIR"):
-        path = _resolve_against(project_root, config[key])
-        config[key] = path
-
     if config["ICON"]:
-        config["ICON"] = _resolve_against(project_root, config["ICON"])
+        icon = Path(config["ICON"]).expanduser()
 
-    environment_config = config["ENVIRONMENT"]
-    environment_config["FILES"] = [
-        _resolve_against(project_root, item) for item in environment_config["FILES"]
-    ]
+        if not icon.is_absolute():
+            icon = project_root / icon
 
-    sqlite_config = config["DATABASE"]["SQLITE"]
-
-    if sqlite_config["INITIAL_DATABASE"]:
-        sqlite_config["INITIAL_DATABASE"] = _resolve_against(
-            project_root,
-            sqlite_config["INITIAL_DATABASE"],
-        )
+        config["ICON"] = icon
 
     if not config["NAME"]:
         config["NAME"] = project_root.name
 
+    if not isinstance(config["VERSION"], str) or not config["VERSION"].strip():
+        raise CommandError("VERSION must be a non-empty string.")
+
+    if not config["PUBLISHER"]:
+        config["PUBLISHER"] = config["NAME"]
+
+    if not isinstance(config["PUBLISHER"], str):
+        raise CommandError("PUBLISHER must be a string.")
+
     if not config["EXECUTABLE_NAME"]:
         config["EXECUTABLE_NAME"] = make_safe_filename(config["NAME"])
 
-    runtime_config = config["RUNTIME"]
-
-    if not runtime_config["COMPANY_DIRECTORY"]:
-        runtime_config["COMPANY_DIRECTORY"] = make_safe_filename(
-            config["PUBLISHER"] or config["NAME"]
-        )
-
-    if not runtime_config["APPLICATION_DIRECTORY"]:
-        runtime_config["APPLICATION_DIRECTORY"] = make_safe_filename(config["NAME"])
-
-    if not config["WEBVIEW"]["TITLE"]:
-        config["WEBVIEW"]["TITLE"] = config["NAME"]
+    validate_executable_name(config["EXECUTABLE_NAME"])
 
     settings_module = getattr(settings, "SETTINGS_MODULE", None) or os.environ.get(
         "DJANGO_SETTINGS_MODULE"
@@ -252,289 +161,4 @@ def _normalize(config: dict[str, Any]) -> None:
         raise CommandError("Could not determine DJANGO_SETTINGS_MODULE for the build.")
 
     config["SETTINGS_MODULE"] = settings_module
-    config["WSGI_APPLICATION"] = getattr(
-        settings,
-        "WSGI_APPLICATION",
-        None,
-    )
-
-
-def _resolve_against(project_root: Path, value: Any) -> Path:
-    path = Path(value).expanduser()
-
-    if not path.is_absolute():
-        path = project_root / path
-
-    return path.resolve()
-
-
-def _validate(config: dict[str, Any]) -> None:
-    _expect_type(config, "NAME", str, allow_none=False, non_empty=True)
-    _expect_type(config, "VERSION", str, non_empty=True)
-    _expect_type(config, "PUBLISHER", str, allow_none=True)
-    validate_executable_name(config["EXECUTABLE_NAME"])
-
-    server = _expect_section(config, "SERVER")
-    _expect_type(server, "SERVER.HOST", str, non_empty=True)
-    _expect_type(server, "SERVER.PORT", int)
-
-    if not 1 <= server["PORT"] <= 65535:
-        raise CommandError(
-            f"SERVER.PORT must be between 1 and 65535: {server['PORT']!r}."
-        )
-
-    _expect_type(server, "SERVER.THREADS", int)
-
-    if server["THREADS"] < 1:
-        raise CommandError("SERVER.THREADS must be at least 1.")
-
-    if server["MODE"] not in _VALID_SERVER_MODES:
-        raise CommandError(
-            "SERVER.MODE must be one of: "
-            + ", ".join(sorted(_VALID_SERVER_MODES))
-            + f" (got {server['MODE']!r})."
-        )
-
-    _expect_type(server, "SERVER.OPEN_BROWSER", bool)
-
-    webview = _expect_section(config, "WEBVIEW")
-    _expect_type(webview, "WEBVIEW.TITLE", str, non_empty=True)
-    _expect_type(webview, "WEBVIEW.WIDTH", int)
-    _expect_type(webview, "WEBVIEW.HEIGHT", int)
-
-    if webview["WIDTH"] < 1:
-        raise CommandError("WEBVIEW.WIDTH must be at least 1.")
-
-    if webview["HEIGHT"] < 1:
-        raise CommandError("WEBVIEW.HEIGHT must be at least 1.")
-
-    _expect_type(webview, "WEBVIEW.RESIZABLE", bool)
-
-    environment = _expect_section(config, "ENVIRONMENT")
-    _expect_type(environment, "ENVIRONMENT.ENABLED", bool)
-    _expect_type(environment, "ENVIRONMENT.OVERRIDE_PROCESS_ENV", bool)
-    _expect_type(environment, "ENVIRONMENT.ALLOW_SECRETS", bool)
-    _expect_type(environment, "ENVIRONMENT.WARN_ON_SECRET_NAMES", bool)
-
-    _expect_type(environment, "ENVIRONMENT.FILES", list)
-
-    for item in environment["FILES"]:
-        _expect_value_type(
-            item,
-            (str, Path),
-            "ENVIRONMENT.FILES entries",
-        )
-
-    for key in ("INCLUDE", "EXCLUDE", "REQUIRED"):
-        _expect_type(environment, f"ENVIRONMENT.{key}", list)
-
-        for item in environment[key]:
-            _expect_value_type(
-                item,
-                str,
-                f"ENVIRONMENT.{key} entries",
-            )
-
-    if environment["PACKAGE_MODE"] != "snapshot":
-        raise CommandError(
-            "ENVIRONMENT.PACKAGE_MODE must be 'snapshot' in this version."
-        )
-
-    _validate_plain_filename(
-        environment["SNAPSHOT_FILENAME"],
-        "ENVIRONMENT.SNAPSHOT_FILENAME",
-    )
-
-    database = _expect_section(config, "DATABASE")
-
-    if database["MODE"] not in _VALID_DATABASE_MODES:
-        raise CommandError(
-            "DATABASE.MODE must be one of: "
-            + ", ".join(sorted(_VALID_DATABASE_MODES))
-            + f" (got {database['MODE']!r})."
-        )
-
-    _expect_type(database, "DATABASE.RUN_MIGRATIONS", bool)
-    _expect_type(database, "DATABASE.MIGRATION_TIMEOUT", int)
-
-    if database["MIGRATION_TIMEOUT"] < 1:
-        raise CommandError("DATABASE.MIGRATION_TIMEOUT must be at least 1.")
-
-    sqlite = _expect_section(database, "DATABASE.SQLITE")
-    _expect_type(sqlite, "DATABASE.SQLITE.COPY_INITIAL_DATABASE", bool)
-    _expect_type(
-        sqlite,
-        "DATABASE.SQLITE.INITIAL_DATABASE",
-        (str, Path),
-        allow_none=True,
-    )
-
-    try:
-        validate_sqlite_filename(sqlite["FILENAME"])
-    except ValueError as error:
-        raise CommandError(
-            f"Invalid DATABASE.SQLITE.FILENAME setting: {error}"
-        ) from error
-
-    if sqlite["COPY_INITIAL_DATABASE"] and not sqlite["INITIAL_DATABASE"]:
-        raise CommandError(
-            "DATABASE.SQLITE.INITIAL_DATABASE must be set when "
-            "COPY_INITIAL_DATABASE is enabled."
-        )
-
-    external = _expect_section(database, "DATABASE.EXTERNAL")
-    _expect_type(external, "DATABASE.EXTERNAL.USE_PROJECT_SETTINGS", bool)
-    _expect_type(external, "DATABASE.EXTERNAL.CONFIG_FILE", str)
-    _expect_type(
-        external,
-        "DATABASE.EXTERNAL.ALLOW_ENVIRONMENT_VARIABLES",
-        bool,
-    )
-    _expect_type(
-        external,
-        "DATABASE.EXTERNAL.TEST_CONNECTION_ON_STARTUP",
-        bool,
-    )
-
-    admin = _expect_section(config, "INITIAL_ADMIN")
-    _expect_type(admin, "INITIAL_ADMIN.ENABLED", bool)
-    _expect_type(admin, "INITIAL_ADMIN.SQLITE_ONLY", bool)
-    _expect_type(admin, "INITIAL_ADMIN.USERNAME", str, non_empty=True)
-    _expect_type(admin, "INITIAL_ADMIN.PASSWORD", str, non_empty=True)
-    _expect_type(admin, "INITIAL_ADMIN.EMAIL", str)
-    _expect_type(admin, "INITIAL_ADMIN.REQUIRE_PASSWORD_CHANGE", bool)
-    _expect_type(admin, "INITIAL_ADMIN.RESET_PASSWORD_IF_USER_EXISTS", bool)
-    _expect_type(admin, "INITIAL_ADMIN.EXTRA_FIELDS", dict)
-
-    runtime = _expect_section(config, "RUNTIME")
-
-    for key in (
-        "COMPANY_DIRECTORY",
-        "APPLICATION_DIRECTORY",
-        "DATA_DIRECTORY",
-    ):
-        _expect_type(runtime, f"RUNTIME.{key}", (str, Path), allow_none=True)
-
-    for key in ("LOG_DIRECTORY", "MEDIA_DIRECTORY", "CONFIG_DIRECTORY"):
-        _validate_plain_filename(runtime[key], f"RUNTIME.{key}")
-
-    build = _expect_section(config, "BUILD")
-
-    if build["MODE"] != "onedir":
-        raise CommandError(
-            "Only the 'onedir' build mode is supported in this "
-            f"version (got {build['MODE']!r})."
-        )
-
-    for key in ("CONSOLE", "CLEAN", "COLLECT_STATIC"):
-        _expect_type(build, f"BUILD.{key}", bool)
-
-    for key in ("HIDDEN_IMPORTS", "EXCLUDED_MODULES"):
-        _expect_type(build, f"BUILD.{key}", list)
-
-        for item in build[key]:
-            _expect_value_type(item, str, f"BUILD.{key} entries")
-
-    _expect_type(build, "BUILD.EXTRA_DATA", list)
-
-    for item in build["EXTRA_DATA"]:
-        if not isinstance(item, dict):
-            raise CommandError(
-                "Each BUILD.EXTRA_DATA entry must be a dictionary with "
-                "'source' and optional 'destination' keys."
-            )
-
-        if not item.get("source"):
-            raise CommandError(
-                "Each BUILD.EXTRA_DATA entry must contain a 'source' value."
-            )
-
-        if not isinstance(item.get("source"), (str, Path)):
-            raise CommandError("BUILD.EXTRA_DATA 'source' must be a string or path.")
-
-        if "destination" in item and not isinstance(
-            item["destination"],
-            (str, Path),
-        ):
-            raise CommandError(
-                "BUILD.EXTRA_DATA 'destination' must be a string or path."
-            )
-
-    windows = _expect_section(config, "WINDOWS")
-    _expect_type(
-        windows,
-        "WINDOWS.INNO_SETUP_COMPILER",
-        (str, Path),
-        allow_none=True,
-    )
-
-    if windows["PRIVILEGES"] not in _VALID_PRIVILEGES:
-        raise CommandError(
-            "WINDOWS.PRIVILEGES must be one of: "
-            + ", ".join(sorted(_VALID_PRIVILEGES))
-            + f" (got {windows['PRIVILEGES']!r})."
-        )
-
-    _expect_type(windows, "WINDOWS.ARCHITECTURE", str, non_empty=True)
-    _expect_type(windows, "WINDOWS.CREATE_DESKTOP_SHORTCUT", bool)
-    _expect_type(windows, "WINDOWS.CREATE_START_MENU_SHORTCUT", bool)
-
-
-def _expect_section(config: dict[str, Any], key: str) -> dict[str, Any]:
-    section = config.get(key.split(".")[-1])
-
-    if not isinstance(section, dict):
-        raise CommandError(f"The {key} setting must be a dictionary.")
-
-    return section
-
-
-def _expect_type(
-    section: dict[str, Any],
-    key: str,
-    expected: type | tuple[type, ...],
-    *,
-    allow_none: bool = False,
-    non_empty: bool = False,
-) -> None:
-    name = key.split(".")[-1]
-    value = section.get(name)
-
-    if value is None and allow_none:
-        return
-
-    if not isinstance(value, expected):
-        raise CommandError(
-            f"Invalid {key} setting: expected "
-            f"{getattr(expected, '__name__', str(expected))}, got "
-            f"{type(value).__name__}."
-        )
-
-    if non_empty and not str(value).strip():
-        raise CommandError(f"The {key} setting must not be empty.")
-
-
-def _expect_value_type(
-    value: Any,
-    expected: type | tuple[type, ...],
-    label: str,
-) -> None:
-    if not isinstance(value, expected):
-        raise CommandError(
-            f"{label} must be "
-            f"{getattr(expected, '__name__', str(expected))}, got "
-            f"{type(value).__name__}."
-        )
-
-
-def _validate_plain_filename(value: Any, label: str) -> None:
-    if not isinstance(value, str) or not value.strip():
-        raise CommandError(f"The {label} setting must be a non-empty string.")
-
-    candidate = Path(value)
-
-    if candidate.is_absolute() or candidate.name != value or ".." in candidate.parts:
-        raise CommandError(
-            f"The {label} setting must be a plain filename without "
-            f"directories: {value!r}."
-        )
+    config["WSGI_APPLICATION"] = getattr(settings, "WSGI_APPLICATION", None)
