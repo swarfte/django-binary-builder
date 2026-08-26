@@ -41,9 +41,23 @@ the default browser is used as a fallback.
 
 ### 2. Install and register the app
 
+Use whichever workflow you already use for the project — plain `pip`
+or `uv`. Both install the library into the project's virtual
+environment.
+
+**With pip** (run inside your project's virtual environment):
+
+```powershell
+pip install django-binary-builder
+```
+
+**With uv:**
+
 ```powershell
 uv add django-binary-builder
 ```
+
+Then register the app:
 
 ```python
 # settings.py
@@ -73,6 +87,17 @@ DJANGO_BINARY_BUILDER = {
 
 ### 4. Build
 
+Run the build from the same (activated) virtual environment you
+develop in.
+
+**With pip** (virtual environment activated):
+
+```powershell
+python manage.py binary windows
+```
+
+**With uv:**
+
 ```powershell
 uv run python manage.py binary windows
 ```
@@ -93,7 +118,9 @@ python manage.py binary PLATFORM [OPTIONS]
 ```
 
 `PLATFORM` accepts `windows` (implemented), or `linux` / `macos`
-(reserved, not implemented yet).
+(reserved, not implemented yet). uv users prefix the command with
+`uv run` (for example `uv run python manage.py binary windows`) so
+it executes inside the project environment.
 
 | Option               | Behaviour                                                           |
 | -------------------- | ------------------------------------------------------------------- |
@@ -201,8 +228,8 @@ virtual environment to build reproducible bundles.
     to ship an empty database.
   - External databases (PostgreSQL, MySQL, ...) keep the project's
     `DATABASES` settings — install the driver in your build
-    environment (for example `uv add "psycopg[binary]"`) so it lands
-    in the packaged runtime.
+    environment (for example `pip install "psycopg[binary]"` or
+    `uv add "psycopg[binary]"`) so it lands in the packaged runtime.
 - **Migrations** run automatically on every startup.
 - **Initial admin**: when `django.contrib.auth` is installed and no
   superuser exists, one is created with username `admin` and the

@@ -1,6 +1,6 @@
 [project]
 name = "django-binary-builder"
-version = "0.3.1"
+version = "0.3.2"
 description = "Build Django projects as installable desktop applications with a portable Python runtime"
 readme = "README.md"
 authors = [
