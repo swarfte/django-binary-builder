@@ -1,55 +1,38 @@
 """Windows build pipeline orchestration.
 
-This module coordinates the builders; it contains no Jinja template
-details.
+Pipeline overview:
+
+1. resolve the Python pin (``.python-version``) and the dependency
+   list (``requirements.txt`` / ``pyproject.toml`` / ``pip freeze``);
+2. preflight-validate the project, icon and tooling;
+3. build a portable Python runtime with every dependency installed;
+4. assemble the project bundle (source, static files, ``.env``,
+   self-contained launcher);
+5. build the dependency-free entry executable stub;
+6. package everything with Inno Setup into a ``Setup.exe``.
 """
 
-import os
+import importlib.util
 import shutil
-import sys
 from typing import Any
 
-from django.apps import apps
-from django.core.management import call_command
 from django.core.management.base import CommandError, OutputWrapper
 
+from django_binary_builder.builders.bundle import assemble_project_bundle
 from django_binary_builder.builders.inno_setup import (
     find_inno_setup,
     generate_inno_script,
     run_inno_setup,
 )
-from django_binary_builder.builders.launcher import (
-    generate_launcher,
-    generate_runtime_defaults,
+from django_binary_builder.builders.runtime_env import (
+    build_portable_runtime,
+    verify_runtime,
 )
-from django_binary_builder.builders.pyinstaller import (
-    generate_pyinstaller_spec,
-    get_extra_data,
-    run_pyinstaller,
-)
+from django_binary_builder.builders.stub import build_stub
 from django_binary_builder.context import BuildContext
-from django_binary_builder.discovery.database import (
-    driver_install_hint,
-    resolve_database_driver,
-)
-from django_binary_builder.discovery.dependencies import (
-    check_build_dependencies,
-)
-from django_binary_builder.discovery.django_project import (
-    get_settings_database_engine,
-    get_static_root,
-    module_is_importable,
-    split_wsgi_application,
-)
-from django_binary_builder.environment import prepare_build_environment
-from django_binary_builder.environment.snapshot import (
-    write_environment_snapshot,
-)
-from django_binary_builder.environment.validation import (
-    summarize_variables,
-    verify_snapshot_selection,
-)
 from django_binary_builder.platforms.base import PipelineOptions
+from django_binary_builder.python_version import resolve_python_version
+from django_binary_builder.requirements import resolve_requirements
 
 
 def run_windows_pipeline(
@@ -67,21 +50,14 @@ def run_windows_pipeline(
     def ok(message: str) -> None:
         stdout.write(f"[OK] {message}")
 
-    def warn(message: str) -> None:
-        stdout.write(style.WARNING(message))
+    for warning in context.config.get("WARNINGS", []):
+        stdout.write(style.WARNING(warning))
 
-    say(style.MIGRATE_HEADING("Loading build environment..."))
-
-    env_result = prepare_build_environment(
-        config=context.config,
-        project_root=context.project_root,
-        emit_warning=warn,
-    )
+    resolve_environment_inputs(context, say=say, dry_run=options.check)
 
     run_windows_preflight(
         context=context,
         stdout=stdout,
-        env_result=env_result,
         require_inno=not options.skip_installer,
     )
 
@@ -91,99 +67,88 @@ def run_windows_pipeline(
 
     prepare_directories(context)
 
-    # The snapshot is written after directory preparation because a
-    # clean build removes the working directory.
-    write_environment_snapshot(
-        context.runtime_environment_path,
-        env_result.variables,
-    )
+    write_requirements_file(context)
 
-    say("Running Django system checks...")
+    build_portable_runtime(context, emit=say)
 
-    try:
-        call_command("check", verbosity=0)
-    except Exception as error:
-        raise CommandError(f"Django system check failed: {error}") from error
+    verify_runtime(context)
 
-    if context.config["BUILD"]["COLLECT_STATIC"]:
-        say("Collecting static files...")
+    ok(f"Portable runtime ready: {context.runtime_dir}")
 
-        call_command(
-            "collectstatic",
-            interactive=False,
-            verbosity=0,
-            clear=True,
-        )
+    assemble_project_bundle(context, emit=say)
 
-        static_root = get_static_root()
-
-        if static_root is not None:
-            ok(f"Static files collected: {static_root}")
-
-    say("Generating runtime defaults...")
-
-    generate_runtime_defaults(context)
-
-    ok(f"Runtime defaults generated: {context.runtime_defaults_path}")
-
-    say("Generating launcher...")
-
-    generate_launcher(context)
-
-    ok(f"Launcher generated: {context.launcher_path}")
-
-    say("Generating PyInstaller spec...")
-
-    generate_pyinstaller_spec(context)
-
-    ok(f"PyInstaller spec generated: {context.spec_path}")
-
-    if not options.skip_installer:
-        say("Generating Inno Setup script...")
-
-        generate_inno_script(context)
-
-        ok(f"Inno Setup script generated: {context.inno_script_path}")
-
-    if options.generate_only:
-        stdout.write(
-            style.SUCCESS("Build files generated successfully (--generate-only).")
-        )
-        return None
-
-    say("Running PyInstaller...")
-
-    run_pyinstaller(context)
-
-    ok(f"Application bundle created: {context.bundle_dir}")
+    build_stub(context, emit=say)
 
     if options.skip_installer:
         stdout.write(
-            style.SUCCESS("Application bundle created successfully (--skip-installer).")
+            style.SUCCESS(
+                "Application bundle created successfully (--skip-installer)."
+            )
         )
+        say(f"Bundle: {context.bundle_dir}")
+        say(f"Executable: {context.executable_path}")
         return None
 
-    say("Running Inno Setup...")
+    say("Generating Inno Setup script...")
+
+    generate_inno_script(context)
+
+    ok(f"Inno Setup script generated: {context.inno_script_path}")
+
+    say("Running Inno Setup (this can take a while)...")
 
     installer_path = run_inno_setup(context)
 
     ok(f"Windows installer created: {installer_path}")
 
-    print_build_summary(
-        context,
-        stdout=stdout,
-        style=style,
-        env_result=env_result,
-    )
+    print_build_summary(context, stdout=stdout, style=style)
 
     return installer_path
+
+
+def resolve_environment_inputs(
+    context: BuildContext,
+    *,
+    say: Any,
+    dry_run: bool = False,
+) -> None:
+    """Resolve the ``.python-version`` pin and the dependency list."""
+
+    context.python_version = resolve_python_version(
+        context.project_root,
+        dry_run=dry_run,
+    )
+
+    say(f"Python version pin: {context.python_version}")
+
+    result = resolve_requirements(context.project_root, dry_run=dry_run)
+
+    context.requirements = result.lines
+
+    say(f"Dependencies resolved from: {result.source}")
+
+    if result.generated_file is not None and not dry_run:
+        say(f"Generated {result.generated_file}")
+
+
+def write_requirements_file(context: BuildContext) -> None:
+    """Write the resolved dependency list next to the build files."""
+
+    requirements_path = context.generated_dir / "requirements.txt"
+
+    requirements_path.write_text(
+        "\n".join(context.requirements) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    context.requirements_path = requirements_path
 
 
 def run_windows_preflight(
     *,
     context: BuildContext,
     stdout: OutputWrapper,
-    env_result: Any,
     require_inno: bool,
 ) -> None:
     """Validate every requirement before building."""
@@ -191,17 +156,14 @@ def run_windows_preflight(
     def ok(message: str) -> None:
         stdout.write(f"[OK] {message}")
 
-    if sys.platform != "win32":
-        raise CommandError("Windows builds must be performed on a Windows host.")
-
-    check_build_dependencies(stdout.write)
-
     if not context.project_root.is_dir():
         raise CommandError(f"Project root does not exist: {context.project_root}")
 
     ok(f"Project root: {context.project_root}")
 
-    if not context.settings_module or not module_is_importable(context.settings_module):
+    if not context.settings_module or not _module_is_importable(
+        context.settings_module
+    ):
         raise CommandError(
             f"The Django settings module is not importable: {context.settings_module}"
         )
@@ -209,52 +171,19 @@ def run_windows_preflight(
     if not context.wsgi_application:
         raise CommandError("WSGI_APPLICATION is not configured in Django settings.")
 
-    try:
-        wsgi_module, _ = split_wsgi_application(context.wsgi_application)
-    except ValueError as error:
-        raise CommandError(str(error)) from error
-
-    if not module_is_importable(wsgi_module):
-        raise CommandError(
-            f"The WSGI application module is not importable: {wsgi_module}"
-        )
-
+    ok(f"Settings module: {context.settings_module}")
     ok(f"WSGI application: {context.wsgi_application}")
 
-    build_config = context.config["BUILD"]
-
-    if build_config["MODE"] != "onedir":
-        raise CommandError("Only the 'onedir' build mode is supported in this version.")
-
-    if build_config["COLLECT_STATIC"]:
-        static_root = get_static_root()
-
-        if static_root is None:
-            raise CommandError(
-                "STATIC_ROOT must be configured because "
-                "BUILD.COLLECT_STATIC is enabled."
-            )
-
-        if static_root.is_file():
-            raise CommandError(f"STATIC_ROOT must be a directory: {static_root}")
-
-        ok(f"STATIC_ROOT: {static_root}")
-
-    icon = context.config.get("ICON")
+    icon = context.icon
 
     if icon:
-        icon_path = icon
+        if not icon.is_file():
+            raise CommandError(f"Windows icon file was not found: {icon}")
 
-        if not icon_path.is_file():
-            raise CommandError(f"Windows icon file was not found: {icon_path}")
-
-        if icon_path.suffix.lower() != ".ico":
+        if icon.suffix.lower() != ".ico":
             raise CommandError("The Windows application icon must use the .ico format.")
 
-        ok(f"Windows icon: {icon_path}")
-
-    if not context.app_version:
-        raise CommandError("The application version must not be empty.")
+        ok(f"Windows icon: {icon}")
 
     ok(
         f"Application: {context.app_name} "
@@ -264,92 +193,28 @@ def run_windows_preflight(
 
     _check_output_parent_writable(context.release_dir)
 
-    environment_config = context.config["ENVIRONMENT"]
-
-    verify_snapshot_selection(
-        env_result.variables,
-        environment_config["EXCLUDE"],
-    )
-
-    ok(
-        "Environment variables selected for packaging: "
-        + summarize_variables(env_result.variables)
-    )
-
-    database_config = context.config["DATABASE"]
-
-    if database_config["MODE"] not in {"sqlite", "external"}:
-        raise CommandError("DATABASE.MODE must be 'sqlite' or 'external'.")
-
-    sqlite_config = database_config["SQLITE"]
-
-    if (
-        context.uses_sqlite
-        and sqlite_config["COPY_INITIAL_DATABASE"]
-        and sqlite_config["INITIAL_DATABASE"]
-        and not sqlite_config["INITIAL_DATABASE"].is_file()
-    ):
-        raise CommandError(
-            "DATABASE.SQLITE.INITIAL_DATABASE does not exist: "
-            f"{sqlite_config['INITIAL_DATABASE']}"
-        )
-
-    admin_config = context.config["INITIAL_ADMIN"]
-
-    if admin_config["ENABLED"] and (
-        context.uses_sqlite or not admin_config["SQLITE_ONLY"]
-    ):
-        for required_app in ("django.contrib.auth", "django.contrib.contenttypes"):
-            if not apps.is_installed(required_app):
-                raise CommandError(
-                    f"'{required_app}' must be in INSTALLED_APPS when "
-                    "INITIAL_ADMIN is enabled."
-                )
-
-        ok("Initial administrator creation is enabled.")
-
-    if context.uses_external_database:
-        engine = get_settings_database_engine()
-        driver = resolve_database_driver(engine)
-
-        if driver.driver_module is None and engine not in (
-            "django.db.backends.sqlite3",
-        ):
-            raise CommandError(
-                f"The database driver for '{engine}' is not installed. "
-                f"Install it with: {driver_install_hint(engine)}"
-            )
-
-        if driver.driver_module:
-            ok(f"Database driver: {driver.driver_module} ({engine})")
-
-    get_extra_data(context)
-
-    ok("Extra data entries are valid.")
-
     if require_inno:
-        inno_compiler = find_inno_setup(context)
+        inno_compiler = find_inno_setup()
 
         if inno_compiler is None:
             raise CommandError(
-                "Inno Setup 7 was not found. Install Inno Setup 7 or "
-                "configure DJANGO_BINARY_BUILDER['WINDOWS']"
-                "['INNO_SETUP_COMPILER']."
+                "Inno Setup 7 was not found. Install Inno Setup 7, add "
+                "ISCC.exe to PATH, set the DJANGO_BINARY_INNO_COMPILER "
+                "environment variable, or build with --skip-installer."
             )
 
         ok(f"Inno Setup: {inno_compiler}")
 
 
 def prepare_directories(context: BuildContext) -> None:
-    """Clean and create the build working directories."""
+    """Recreate the build working directories."""
 
-    if context.config["BUILD"]["CLEAN"] and context.work_dir.exists():
+    if context.work_dir.exists():
         shutil.rmtree(context.work_dir)
 
     for directory in (
         context.generated_dir,
-        context.pyinstaller_build_dir,
-        context.pyinstaller_dist_dir,
+        context.bundle_dir,
         context.release_dir,
     ):
         directory.mkdir(parents=True, exist_ok=True)
@@ -360,48 +225,31 @@ def print_build_summary(
     *,
     stdout: OutputWrapper,
     style: Any,
-    env_result: Any,
 ) -> None:
-    """Print a sanitized build summary; no secret values are shown."""
+    """Print the final build summary."""
 
     stdout.write(style.MIGRATE_HEADING("Build summary"))
 
     stdout.write(f"  Bundle: {context.bundle_dir}")
     stdout.write(f"  Executable: {context.executable_path}")
     stdout.write(f"  Installer: {context.installer_path}")
-
-    if env_result.enabled:
-        stdout.write(
-            "  Environment variables packaged: "
-            + summarize_variables(env_result.variables)
-        )
-    else:
-        stdout.write(
-            "  Environment variables packaged: none (--no-env or "
-            "ENVIRONMENT.ENABLED=False)"
-        )
-
-    if env_result.secret_names:
-        stdout.write(
-            style.WARNING(
-                "  High risk: sensitive variables are embedded in "
-                "plain text: " + ", ".join(env_result.secret_names)
-            )
-        )
-
-    if context.config["INITIAL_ADMIN"]["ENABLED"] and context.uses_sqlite:
-        stdout.write(
-            style.WARNING(
-                "  An initial administrator will be created on first "
-                "run using a publicly documented default password. "
-                "Change it immediately after the first login."
-            )
-        )
+    stdout.write(f"  Python runtime: {context.runtime_dir}")
+    stdout.write(f"  Python version: {context.python_version}")
+    stdout.write(f"  Dependencies: {len(context.requirements)} requirements")
 
     stdout.write(style.SUCCESS(f"Build completed: {context.installer_path}"))
 
 
+def _module_is_importable(module_name: str) -> bool:
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def _check_output_parent_writable(release_dir) -> None:
+    import os
+
     candidate = release_dir
 
     while not candidate.exists():

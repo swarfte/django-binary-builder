@@ -1,205 +1,80 @@
+"""Tests for the simplified builder configuration."""
+
 from pathlib import Path
 
 import pytest
-from django.conf import settings as django_settings
 from django.core.management.base import CommandError
+from django.test import override_settings
 
-from django_binary_builder.conf import (
-    DEFAULTS,
-    deep_merge,
-    get_builder_settings,
-    make_safe_filename,
-    validate_executable_name,
-)
+from django_binary_builder.conf import get_builder_settings
 
 
-def test_deep_merge_preserves_untouched_keys():
-    base = {"A": 1, "NESTED": {"X": 1, "Y": 2}}
-    override = {"NESTED": {"Y": 3, "Z": 4}}
-
-    result = deep_merge(base, override)
-
-    assert result == {"A": 1, "NESTED": {"X": 1, "Y": 3, "Z": 4}}
-    assert base["NESTED"]["Y"] == 2
-
-
-def test_deep_merge_overrides_scalars():
-    result = deep_merge({"A": 1, "B": 2}, {"B": 3})
-
-    assert result == {"A": 1, "B": 3}
-
-
-def test_deep_merge_replaces_mismatched_types():
-    result = deep_merge({"A": {"X": 1}}, {"A": "scalar"})
-
-    assert result["A"] == "scalar"
-
-
-def test_defaults_are_applied(settings):
-    settings.DJANGO_BINARY_BUILDER = {}
-
+@override_settings(DJANGO_BINARY_BUILDER={})
+def test_defaults_are_derived_from_the_project():
     config = get_builder_settings()
 
-    assert config["SERVER"]["PORT"] == DEFAULTS["SERVER"]["PORT"]
-    assert config["DATABASE"]["MODE"] == "sqlite"
-    assert config["INITIAL_ADMIN"]["USERNAME"] == "admin"
-    assert config["ENVIRONMENT"]["SNAPSHOT_FILENAME"] == ("runtime-environment.json")
+    assert config["NAME"] == "tests"
+    assert config["EXECUTABLE_NAME"] == "tests"
+    assert config["VERSION"] == "0.1.0"
+    assert config["PUBLISHER"] == "tests"
+    assert config["ICON"] is None
+    assert config["SETTINGS_MODULE"] == "tests.settings"
 
 
-def test_relative_paths_normalize_under_project_root(settings, tmp_path):
+def test_user_settings_are_applied(settings):
     settings.DJANGO_BINARY_BUILDER = {
-        "OUTPUT_DIR": "dist-output",
-        "WORK_DIR": tmp_path / "absolute-work",
-    }
-
-    config = get_builder_settings()
-
-    project_root = Path(django_settings.BASE_DIR).resolve()
-
-    assert config["OUTPUT_DIR"] == project_root / "dist-output"
-    assert config["WORK_DIR"] == Path(tmp_path / "absolute-work").resolve()
-
-
-def test_name_defaults_to_project_root_name(settings):
-    settings.DJANGO_BINARY_BUILDER = {}
-
-    config = get_builder_settings()
-
-    project_root = Path(django_settings.BASE_DIR).resolve()
-
-    assert config["NAME"] == project_root.name
-
-
-def test_executable_name_derives_from_name(settings):
-    settings.DJANGO_BINARY_BUILDER = {"NAME": "My Cool App!"}
-
-    config = get_builder_settings()
-
-    assert config["EXECUTABLE_NAME"] == "My-Cool-App"
-
-
-def test_make_safe_filename_handles_unsafe_characters():
-    assert make_safe_filename("My App: v2.0!!") == "My-App-v2-0"
-    assert make_safe_filename("///") == "django-binary-builder"
-    assert make_safe_filename("  spaced  name  ") == "spaced-name"
-
-
-@pytest.mark.parametrize(
-    "bad_name",
-    ["", ".hidden", "has space", "slash/name", "CON", "a" * 101],
-)
-def test_validate_executable_name_rejects_invalid_names(bad_name):
-    with pytest.raises(CommandError):
-        validate_executable_name(bad_name)
-
-
-def test_validate_executable_name_accepts_valid_names():
-    assert validate_executable_name("my-app_2") == "my-app_2"
-
-
-def test_invalid_port_type_raises(settings):
-    settings.DJANGO_BINARY_BUILDER = {"SERVER": {"PORT": "8765"}}
-
-    with pytest.raises(CommandError) as error:
-        get_builder_settings()
-
-    assert "SERVER.PORT" in str(error.value)
-
-
-def test_invalid_database_mode_raises(settings):
-    settings.DJANGO_BINARY_BUILDER = {"DATABASE": {"MODE": "mongo"}}
-
-    with pytest.raises(CommandError):
-        get_builder_settings()
-
-
-def test_onefile_mode_rejected(settings):
-    settings.DJANGO_BINARY_BUILDER = {"BUILD": {"MODE": "onefile"}}
-
-    with pytest.raises(CommandError) as error:
-        get_builder_settings()
-
-    assert "onedir" in str(error.value)
-
-
-def test_invalid_sqlite_filename_raises(settings):
-    settings.DJANGO_BINARY_BUILDER = {
-        "DATABASE": {
-            "SQLITE": {"FILENAME": "../escape.sqlite3"},
-        }
-    }
-
-    with pytest.raises(CommandError) as error:
-        get_builder_settings()
-
-    assert "FILENAME" in str(error.value)
-
-
-def test_runtime_directories_derive_from_publisher(settings):
-    settings.DJANGO_BINARY_BUILDER = {
-        "NAME": "My Application",
+        "NAME": "Example Project",
+        "VERSION": "0.1.1",
         "PUBLISHER": "Example Company",
+        "EXECUTABLE_NAME": "example-project",
+        "ICON": Path("assets") / "icon.ico",
     }
 
     config = get_builder_settings()
 
-    assert config["RUNTIME"]["COMPANY_DIRECTORY"] == "Example-Company"
-    assert config["RUNTIME"]["APPLICATION_DIRECTORY"] == "My-Application"
+    assert config["NAME"] == "Example Project"
+    assert config["VERSION"] == "0.1.1"
+    assert config["PUBLISHER"] == "Example Company"
+    assert config["EXECUTABLE_NAME"] == "example-project"
+    assert config["ICON"] == Path(settings.BASE_DIR) / "assets" / "icon.ico"
 
 
-def test_copy_initial_database_requires_source(settings):
-    settings.DJANGO_BINARY_BUILDER = {
-        "DATABASE": {
-            "SQLITE": {
-                "COPY_INITIAL_DATABASE": True,
-                "INITIAL_DATABASE": None,
-            },
-        }
-    }
+def test_unknown_keys_are_ignored_with_a_warning(settings):
+    settings.DJANGO_BINARY_BUILDER = {"NAME": "App", "TYPO_KEY": 1}
 
-    with pytest.raises(CommandError):
+    config = get_builder_settings()
+
+    assert config["NAME"] == "App"
+    assert len(config["WARNINGS"]) == 1
+    assert "TYPO_KEY" in config["WARNINGS"][0]
+
+
+def test_overrides_win_over_user_settings(settings):
+    settings.DJANGO_BINARY_BUILDER = {"NAME": "From settings"}
+
+    config = get_builder_settings({"NAME": "From override"})
+
+    assert config["NAME"] == "From override"
+
+
+def test_invalid_executable_name_is_rejected(settings):
+    settings.DJANGO_BINARY_BUILDER = {"EXECUTABLE_NAME": "not valid!"}
+
+    with pytest.raises(CommandError, match="EXECUTABLE_NAME"):
         get_builder_settings()
 
 
-def test_invalid_privileges_raises(settings):
-    settings.DJANGO_BINARY_BUILDER = {
-        "WINDOWS": {"PRIVILEGES": "powers"},
-    }
+def test_invalid_version_is_rejected(settings):
+    settings.DJANGO_BINARY_BUILDER = {"VERSION": 12}
 
-    with pytest.raises(CommandError):
+    with pytest.raises(CommandError, match="VERSION"):
         get_builder_settings()
 
 
-def test_server_mode_defaults_to_webview(settings):
+def test_missing_settings_module_is_rejected(settings, monkeypatch):
     settings.DJANGO_BINARY_BUILDER = {}
+    settings.SETTINGS_MODULE = None
+    monkeypatch.delenv("DJANGO_SETTINGS_MODULE", raising=False)
 
-    config = get_builder_settings()
-
-    assert config["SERVER"]["MODE"] == "webview"
-
-
-def test_invalid_server_mode_raises(settings):
-    settings.DJANGO_BINARY_BUILDER = {"SERVER": {"MODE": "popup"}}
-
-    with pytest.raises(CommandError) as error:
-        get_builder_settings()
-
-    assert "SERVER.MODE" in str(error.value)
-
-
-def test_webview_title_defaults_to_name(settings):
-    settings.DJANGO_BINARY_BUILDER = {"NAME": "My Cool App"}
-
-    config = get_builder_settings()
-
-    assert config["WEBVIEW"]["TITLE"] == "My Cool App"
-    assert config["WEBVIEW"]["WIDTH"] == 1200
-    assert config["WEBVIEW"]["HEIGHT"] == 800
-    assert config["WEBVIEW"]["RESIZABLE"] is True
-
-
-def test_invalid_webview_width_raises(settings):
-    settings.DJANGO_BINARY_BUILDER = {"WEBVIEW": {"WIDTH": 0}}
-
-    with pytest.raises(CommandError):
+    with pytest.raises(CommandError, match="DJANGO_SETTINGS_MODULE"):
         get_builder_settings()
