@@ -74,6 +74,9 @@ def assemble_project_bundle(
 
     emit(f"Launcher generated: {context.app_dir / 'launcher.py'}")
 
+    if context.icon is not None:
+        emit(f"Window icon bundled for runtime branding: {context.icon}")
+
     environment_file = bundled_environment_file(context)
 
     if environment_file is not None:
@@ -166,8 +169,38 @@ def generate_launcher(context: BuildContext) -> Path:
             "publisher": context.publisher,
             "settings_module": context.settings_module,
             "wsgi_application": context.wsgi_application or "",
+            "icon_path": bundled_icon_path(context),
         },
     )
+
+
+def bundled_icon_path(context: BuildContext) -> str | None:
+    """Return the application icon path relative to the ``app`` directory.
+
+    The launcher applies the icon to the window and the taskbar at
+    runtime; the executable icon alone never brands the running
+    application. Icons stored outside the project root are not picked
+    up by the project copy, so they are copied in explicitly.
+    """
+
+    if context.icon is None:
+        return None
+
+    icon = context.icon.resolve()
+    project_root = context.project_root.resolve()
+
+    try:
+        relative = icon.relative_to(project_root)
+    except ValueError:
+        relative = Path("assets") / "icon.ico"
+
+    target = context.app_dir / relative
+
+    if not target.is_file():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(icon, target)
+
+    return relative.as_posix()
 
 
 def _ignore_project_entry(directory: str, entries: list[str]) -> set[str]:

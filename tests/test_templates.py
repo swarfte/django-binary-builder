@@ -11,6 +11,7 @@ def render_launcher(tmp_path, **overrides):
         "publisher": "Example Company",
         "settings_module": "myproject.settings",
         "wsgi_application": "myproject.wsgi.application",
+        "icon_path": "assets/icon.ico",
     }
 
     context.update(overrides)
@@ -51,6 +52,40 @@ def test_launcher_escapes_quotes_in_names(tmp_path):
     compile(source, str(launcher_path), "exec")
 
 
+def test_launcher_embeds_the_icon_path(tmp_path):
+    launcher_path = render_launcher(tmp_path)
+
+    source = launcher_path.read_text(encoding="utf-8")
+
+    assert '"assets/icon.ico"' in source
+
+
+def test_launcher_handles_a_missing_icon(tmp_path):
+    launcher = load_launcher_module(tmp_path, icon_path=None)
+
+    assert launcher["APP_ICON"] == ""
+    assert launcher["resolve_app_icon"](tmp_path) is None
+
+
+def test_launcher_resolves_the_bundled_icon(tmp_path):
+    assets = tmp_path / "assets"
+
+    assets.mkdir()
+    (assets / "icon.ico").write_bytes(b"icon")
+
+    launcher = load_launcher_module(tmp_path)
+
+    resolved = launcher["resolve_app_icon"](tmp_path)
+
+    assert resolved == (assets / "icon.ico").resolve()
+
+
+def test_launcher_resolves_no_icon_when_the_file_is_absent(tmp_path):
+    launcher = load_launcher_module(tmp_path)
+
+    assert launcher["resolve_app_icon"](tmp_path) is None
+
+
 def test_stub_renders_valid_python(tmp_path):
     stub_path = render_template(
         "stub.py.j2",
@@ -65,8 +100,8 @@ def test_stub_renders_valid_python(tmp_path):
     compile(source, str(stub_path), "exec")
 
 
-def load_launcher_module(tmp_path):
-    launcher_path = render_launcher(tmp_path)
+def load_launcher_module(tmp_path, **overrides):
+    launcher_path = render_launcher(tmp_path, **overrides)
 
     namespace = {"__name__": "generated_launcher"}
 
